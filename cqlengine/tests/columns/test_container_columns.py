@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from cqlengine import Model, ValidationError
 from cqlengine import columns
-from cqlengine.management import create_table, delete_table
+from cqlengine.management import sync_table, drop_table
 from cqlengine.tests.base import BaseCassEngTestCase
 
 
@@ -34,13 +34,17 @@ class TestSetColumn(BaseCassEngTestCase):
     @classmethod
     def setUpClass(cls):
         super(TestSetColumn, cls).setUpClass()
-        delete_table(TestSetModel)
-        create_table(TestSetModel)
+        drop_table(TestSetModel)
+        sync_table(TestSetModel)
 
     @classmethod
     def tearDownClass(cls):
         super(TestSetColumn, cls).tearDownClass()
-        delete_table(TestSetModel)
+        drop_table(TestSetModel)
+
+    def test_add_none_fails(self):
+        with self.assertRaises(ValidationError):
+            m = TestSetModel.create(int_set=set([None]))
 
     def test_empty_set_initial(self):
         """
@@ -187,13 +191,13 @@ class TestListColumn(BaseCassEngTestCase):
     @classmethod
     def setUpClass(cls):
         super(TestListColumn, cls).setUpClass()
-        delete_table(TestListModel)
-        create_table(TestListModel)
+        drop_table(TestListModel)
+        sync_table(TestListModel)
 
     @classmethod
     def tearDownClass(cls):
         super(TestListColumn, cls).tearDownClass()
-        delete_table(TestListModel)
+        drop_table(TestListModel)
 
     def test_initial(self):
         tmp = TestListModel.create()
@@ -315,6 +319,31 @@ class TestListColumn(BaseCassEngTestCase):
         m = TestListModel.get(partition=pkey)
         self.assertEqual(m.int_list, [1,2,3,4])
 
+    def test_remove_entry_works(self):
+        pkey = uuid4()
+        tmp = TestListModel.create(partition=pkey, int_list=[1,2])
+        tmp.int_list.pop()
+        tmp.update()
+        tmp = TestListModel.get(partition=pkey)
+        self.assertEqual(tmp.int_list, [1])
+
+    def test_update_from_non_empty_to_empty(self):
+        pkey = uuid4()
+        tmp = TestListModel.create(partition=pkey, int_list=[1,2])
+        tmp.int_list = []
+        tmp.update()
+
+        tmp = TestListModel.get(partition=pkey)
+        self.assertEqual(tmp.int_list, [])
+
+    def test_insert_none(self):
+        pkey = uuid4()
+        with self.assertRaises(ValidationError):
+            TestListModel.create(partition=pkey, int_list=[None])
+
+
+
+
 
 class TestMapModel(Model):
     partition = columns.UUID(primary_key=True, default=uuid4)
@@ -326,22 +355,32 @@ class TestMapColumn(BaseCassEngTestCase):
     @classmethod
     def setUpClass(cls):
         super(TestMapColumn, cls).setUpClass()
-        delete_table(TestMapModel)
-        create_table(TestMapModel)
+        drop_table(TestMapModel)
+        sync_table(TestMapModel)
 
     @classmethod
     def tearDownClass(cls):
         super(TestMapColumn, cls).tearDownClass()
-        delete_table(TestMapModel)
+        drop_table(TestMapModel)
 
     def test_empty_default(self):
         tmp = TestMapModel.create()
         tmp.int_map['blah'] = 1
 
+    def test_add_none_as_map_key(self):
+        with self.assertRaises(ValidationError):
+            TestMapModel.create(int_map={None:1})
+
+    def test_add_none_as_map_value(self):
+        with self.assertRaises(ValidationError):
+            TestMapModel.create(int_map={None:1})
+
+
     def test_empty_retrieve(self):
         tmp = TestMapModel.create()
         tmp2 = TestMapModel.get(partition=tmp.partition)
         tmp2.int_map['blah'] = 1
+
 
     def test_remove_last_entry_works(self):
         tmp = TestMapModel.create()
